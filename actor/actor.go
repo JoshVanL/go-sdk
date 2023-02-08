@@ -14,7 +14,9 @@ limitations under the License.
 package actor
 
 import (
+	"context"
 	"sync"
+	"time"
 )
 
 // Client is the interface that should be impl by user's actor client.
@@ -91,6 +93,10 @@ type StateManager interface {
 	Get(stateName string, reply interface{}) error
 	// Set is to set new state store with @stateName and @value
 	Set(stateName string, value interface{}) error
+	// Set is to set new state store with @stateName and @value for the given
+	// duration. Recommended over Set, unless you are managing actor state clean
+	// up yourself.
+	SetFor(ctx context.Context, stateName string, value any, duration time.Duration) error
 	// Remove is to remove state store with @stateName
 	Remove(stateName string) error
 	// Contains is to check if state store contains @stateName

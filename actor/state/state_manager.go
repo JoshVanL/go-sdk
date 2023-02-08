@@ -14,12 +14,21 @@ limitations under the License.
 package state
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/dapr/go-sdk/actor"
+	pb "github.com/dapr/go-sdk/dapr/proto/runtime/v1"
+)
+
+const (
+	DaprReservedNamespace = "io.dapr."
+	DaprSetFor            = "SetFor."
 )
 
 type ActorStateManager struct {
@@ -92,6 +101,9 @@ func (a *ActorStateManager) Set(stateName string, value interface{}) error {
 	if stateName == "" {
 		return errors.New("state name can't be empty")
 	}
+	if strings.HasPrefix(stateName, DaprReservedNamespace) {
+		return fmt.Errorf("state name can't start with reserved namespace %q", DaprReservedNamespace)
+	}
 	if val, ok := a.stateChangeTracker.Load(stateName); ok {
 		metadata := val.(*ChangeMetadata)
 		if metadata.Kind == None || metadata.Kind == Remove {
@@ -105,6 +117,32 @@ func (a *ActorStateManager) Set(stateName string, value interface{}) error {
 		Value: value,
 	})
 	return nil
+}
+
+func (a *ActorStateManager) SetFor(ctx context.Context, stateName string, value any, duration time.Duration) error {
+	if stateName == "" {
+		return errors.New("state name can't be empty")
+	}
+	if strings.HasPrefix(stateName, DaprReservedNamespace) {
+		return fmt.Errorf("state name can't start with reserved namespace %q", DaprReservedNamespace)
+	}
+
+	// RegisterActorReminder is actually an upsert on the backend so we don't
+	// need to check if it already exists or do any delete+create shenanigans.
+	if _, err := a.stateAsyncProvider.daprClient.GrpcClient().RegisterActorReminder(ctx, &pb.RegisterActorReminderRequest{
+		ActorType: a.ActorTypeName,
+		ActorId:   a.ActorID,
+		Name:      DaprReservedNamespace + DaprSetFor + stateName,
+		DueTime:   duration.String(),
+		// We don't want to set TTL since we want the reminder to be active until
+		// the state is removed. Deletion is handled by the reminder handler in the
+		// SDK.
+	}); err != nil {
+		return err
+	}
+
+	// TODO: With `SetContext` to pass through context, once available.
+	return a.Set(stateName, value)
 }
 
 func (a *ActorStateManager) Remove(stateName string) error {

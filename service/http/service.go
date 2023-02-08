@@ -69,7 +69,9 @@ func (s *Server) RegisterActorImplFactory(f actor.Factory, opts ...config.Option
 
 // Start starts the HTTP handler. Blocks while serving.
 func (s *Server) Start() error {
-	s.registerBaseHandler()
+	if err := s.registerBaseHandler(); err != nil {
+		return err
+	}
 	return s.httpServer.ListenAndServe()
 }
 

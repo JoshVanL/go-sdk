@@ -17,13 +17,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 
 	actorErr "github.com/dapr/go-sdk/actor/error"
 	"github.com/dapr/go-sdk/actor/runtime"
+	"github.com/dapr/go-sdk/actor/state"
+	"github.com/dapr/go-sdk/client"
 	"github.com/dapr/go-sdk/service/common"
 	"github.com/dapr/go-sdk/service/internal"
 )
@@ -67,7 +71,12 @@ type topicEventJSON struct {
 	PubsubName string `json:"pubsubname"`
 }
 
-func (s *Server) registerBaseHandler() {
+func (s *Server) registerBaseHandler() error {
+	cl, err := client.NewClient()
+	if err != nil {
+		return fmt.Errorf("failed to create dapr client: %w", err)
+	}
+
 	// register subscribe handler
 	f := func(w http.ResponseWriter, r *http.Request) {
 		subs := make([]*internal.TopicSubscription, 0, len(s.topicRegistrar))
@@ -145,13 +154,39 @@ func (s *Server) registerBaseHandler() {
 		actorType := varsMap["actorType"]
 		actorID := varsMap["actorId"]
 		reminderName := varsMap["reminderName"]
+
+		if strings.HasPrefix(reminderName, state.DaprReservedNamespace+state.DaprSetFor) {
+			stateName := reminderName[len(state.DaprReservedNamespace+state.DaprSetFor):]
+			if err := cl.SaveStateTransactionally(r.Context(), actorType, actorID, []*client.ActorStateOperation{
+				{OperationType: string(state.Remove), Key: stateName, Value: nil},
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			if err := cl.UnregisterActorReminder(r.Context(), &client.UnregisterActorReminderRequest{
+				ActorType: actorType,
+				ActorID:   actorID,
+				Name:      reminderName,
+			}); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			// Return early to avoid calling the actor method.
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		reqData, _ := io.ReadAll(r.Body)
 		err := runtime.GetActorRuntimeInstance().InvokeReminder(actorType, actorID, reminderName, reqData)
 		if err == actorErr.ErrActorTypeNotFound {
 			w.WriteHeader(http.StatusNotFound)
+			return
 		}
 		if err != actorErr.Success {
 			w.WriteHeader(http.StatusInternalServerError)
+			return
 		}
 		w.WriteHeader(http.StatusOK)
 	}
@@ -174,6 +209,8 @@ func (s *Server) registerBaseHandler() {
 		w.WriteHeader(http.StatusOK)
 	}
 	s.mux.HandleFunc("/actors/{actorType}/{actorId}/method/timer/{timerName}", fTimer).Methods(http.MethodPut)
+
+	return nil
 }
 
 // AddTopicEventHandler appends provided event handler with it's name to the service.
