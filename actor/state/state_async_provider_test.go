@@ -14,6 +14,7 @@ limitations under the License.
 package state
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -168,4 +169,50 @@ func TestNewDaprStateAsyncProvider(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeAsync struct {
+	fnContainsContext func(context.Context, string, string, string) (bool, error)
+	fnLoadContext     func(context.Context, string, string, string, any) error
+	fnApplyContext    func(context.Context, string, string, []*ActorStateChange) error
+}
+
+func newFakeAsync(t *testing.T) *fakeAsync {
+	return &fakeAsync{
+		fnContainsContext: func(context.Context, string, string, string) (bool, error) {
+			t.Error("unexpected call to Contains")
+			return false, nil
+		},
+		fnLoadContext: func(context.Context, string, string, string, any) error {
+			t.Error("unexpected call to Load")
+			return nil
+		},
+		fnApplyContext: func(context.Context, string, string, []*ActorStateChange) error {
+			t.Error("unexpected call to Apply")
+			return nil
+		},
+	}
+}
+
+func (f *fakeAsync) WithFnContainsContext(fn func(context.Context, string, string, string) (bool, error)) *fakeAsync {
+	f.fnContainsContext = fn
+	return f
+}
+func (f *fakeAsync) WithFnLoadContext(fn func(context.Context, string, string, string, any) error) *fakeAsync {
+	f.fnLoadContext = fn
+	return f
+}
+func (f *fakeAsync) WithFnApplyContext(fn func(context.Context, string, string, []*ActorStateChange) error) *fakeAsync {
+	f.fnApplyContext = fn
+	return f
+}
+
+func (f *fakeAsync) ContainsContext(ctx context.Context, actorType, actorID, key string) (bool, error) {
+	return f.fnContainsContext(ctx, actorType, actorID, key)
+}
+func (f *fakeAsync) LoadContext(ctx context.Context, actorType, actorID, key string, value any) error {
+	return f.fnLoadContext(ctx, actorType, actorID, key, value)
+}
+func (f *fakeAsync) ApplyContext(ctx context.Context, actorType, actorID string, stateChanges []*ActorStateChange) error {
+	return f.fnApplyContext(ctx, actorType, actorID, stateChanges)
 }

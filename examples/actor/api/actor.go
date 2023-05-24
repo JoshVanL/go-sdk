@@ -13,18 +13,22 @@ limitations under the License.
 
 package api
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type ClientStub struct {
-	GetUser         func(context.Context, *User) (*User, error)
-	Invoke          func(context.Context, string) (string, error)
-	Get             func(context.Context) (string, error)
-	Post            func(context.Context, string) error
-	StartTimer      func(context.Context, *TimerRequest) error
-	StopTimer       func(context.Context, *TimerRequest) error
-	StartReminder   func(context.Context, *ReminderRequest) error
-	StopReminder    func(context.Context, *ReminderRequest) error
-	IncrementAndGet func(ctx context.Context, stateKey string) (*User, error)
+	GetUser                func(context.Context, *User) (*User, error)
+	Invoke                 func(context.Context, string) (string, error)
+	Get                    func(context.Context) (string, error)
+	Post                   func(context.Context, string) error
+	StartTimer             func(context.Context, *TimerRequest) error
+	StopTimer              func(context.Context, *TimerRequest) error
+	StartReminder          func(context.Context, *ReminderRequest) error
+	StopReminder           func(context.Context, *ReminderRequest) error
+	IncrementAndGet        func(ctx context.Context, stateKey string) (*User, error)
+	IncrementAndGetWithTTL func(context.Context, IncrementAndGetWithTTLRequest) (*User, error)
 }
 
 func (a *ClientStub) Type() string {
@@ -53,4 +57,9 @@ type ReminderRequest struct {
 	Duration     string `json:"duration"`
 	Period       string `json:"period"`
 	Data         string `json:"data"`
+}
+
+type IncrementAndGetWithTTLRequest struct {
+	StateKey string        `json:"state_key"`
+	TTL      time.Duration `json:"ttl"`
 }

@@ -23,7 +23,6 @@ import (
 	"github.com/dapr/go-sdk/actor"
 	dapr "github.com/dapr/go-sdk/client"
 	"github.com/dapr/go-sdk/examples/actor/api"
-
 	daprd "github.com/dapr/go-sdk/service/http"
 )
 
@@ -106,13 +105,17 @@ func (t *TestActor) Post(ctx context.Context, req string) error {
 }
 
 func (t *TestActor) IncrementAndGet(ctx context.Context, stateKey string) (*api.User, error) {
+	return t.IncrementAndGetWithTTL(ctx, api.IncrementAndGetWithTTLRequest{StateKey: stateKey, TTL: time.Minute})
+}
+
+func (t *TestActor) IncrementAndGetWithTTL(ctx context.Context, req api.IncrementAndGetWithTTLRequest) (*api.User, error) {
 	stateData := api.User{}
-	if exist, err := t.GetStateManager().Contains(ctx, stateKey); err != nil {
-		fmt.Println("state manager call contains with key " + stateKey + "err = " + err.Error())
+	if exist, err := t.GetStateManager().Contains(ctx, req.StateKey); err != nil {
+		fmt.Println("state manager call contains with key " + req.StateKey + "err = " + err.Error())
 		return &stateData, err
 	} else if exist {
-		if err := t.GetStateManager().Get(ctx, stateKey, &stateData); err != nil {
-			fmt.Println("state manager call get with key " + stateKey + "err = " + err.Error())
+		if err := t.GetStateManager().Get(ctx, req.StateKey, &stateData); err != nil {
+			fmt.Println("state manager call get with key " + req.StateKey + "err = " + err.Error())
 			return &stateData, err
 		}
 	}
@@ -120,8 +123,8 @@ func (t *TestActor) IncrementAndGet(ctx context.Context, stateKey string) (*api.
 	// You should always use `SetWithTTL` to set state with expiration time
 	// unless you also implement cleanup logic. This prevents the state store
 	// from growing indefinitely.
-	if err := t.GetStateManager().SetWithTTL(ctx, stateKey, stateData, time.Minute); err != nil {
-		fmt.Printf("state manager set get with key %s and state data = %+v, error = %s", stateKey, stateData, err.Error())
+	if err := t.GetStateManager().SetWithTTL(ctx, req.StateKey, stateData, req.TTL); err != nil {
+		fmt.Printf("state manager set get with key %s and state data = %+v, error = %s", req.StateKey, stateData, err.Error())
 		return &stateData, err
 	}
 	return &stateData, nil

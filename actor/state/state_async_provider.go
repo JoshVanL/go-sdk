@@ -22,6 +22,12 @@ import (
 	client "github.com/dapr/go-sdk/client"
 )
 
+type asyncProvider interface {
+	ContainsContext(ctx context.Context, actorType string, actorID string, stateName string) (bool, error)
+	LoadContext(ctx context.Context, actorType, actorID, stateName string, reply any) error
+	ApplyContext(ctx context.Context, actorType, actorID string, changes []*ActorStateChange) error
+}
+
 type DaprStateAsyncProvider struct {
 	daprClient      client.Client
 	stateSerializer codec.Codec

@@ -13,35 +13,22 @@ limitations under the License.
 
 package state
 
-import (
-	"time"
-)
+import "time"
 
-type ChangeKind string
-
-const (
-	None   = ChangeKind("")
-	Add    = ChangeKind("upsert")
-	Update = ChangeKind("upsert")
-	Remove = ChangeKind("delete")
-)
-
-type ChangeMetadata struct {
-	Kind        ChangeKind
-	Value       any
-	TTL         *time.Duration
-	estimateTTL time.Time
+type clock interface {
+	Now() time.Time
 }
 
-func NewChangeMetadata(kind ChangeKind, value any) *ChangeMetadata {
-	return &ChangeMetadata{
-		Kind:  kind,
-		Value: value,
-	}
+type realClock struct{}
+
+type fakeClock struct {
+	now time.Time
 }
 
-func (c *ChangeMetadata) WithTTL(ttl time.Duration) *ChangeMetadata {
-	c.estimateTTL = time.Now().Add(ttl)
-	c.TTL = &ttl
-	return c
+func (realClock) Now() time.Time {
+	return time.Now()
+}
+
+func (f fakeClock) Now() time.Time {
+	return f.now
 }

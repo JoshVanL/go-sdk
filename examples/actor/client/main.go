@@ -126,4 +126,17 @@ func main() {
 		fmt.Printf("get user = %+v\n", *usr)
 		time.Sleep(time.Second)
 	}
+
+	// State with TTL should see age reset to 1.
+	ttlStateKey := fmt.Sprintf("ttlStateKey-%s", uuid.New().String())
+	for i := 0; i < 4; i++ {
+		usr, err := myActor.IncrementAndGetWithTTL(ctx, api.IncrementAndGetWithTTLRequest{StateKey: ttlStateKey, TTL: time.Second * 2})
+		if err != nil {
+			panic(err)
+		}
+		if i == 2 {
+			time.Sleep(time.Second * 4)
+		}
+		fmt.Printf("get user = %+v\n", *usr)
+	}
 }

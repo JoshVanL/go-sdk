@@ -51,6 +51,10 @@ expected_stdout_lines:
   - '== APP == stop reminder'
   - '== APP == get user = {Name: Age:1}'
   - '== APP == get user = {Name: Age:2}'
+  - '== APP == get user = {Name: Age:1}'
+  - '== APP == get user = {Name: Age:2}'
+  - '== APP == get user = {Name: Age:3}'
+  - '== APP == get user = {Name: Age:1}'
 
 background: true
 sleep: 40
@@ -95,6 +99,10 @@ dapr stop --app-id  actor-serving
 == APP == stop reminder
 == APP == get user = {Name: Age:1}
 == APP == get user = {Name: Age:2}
+== APP == get user = {Name: Age:1}
+== APP == get user = {Name: Age:2}
+== APP == get user = {Name: Age:3}
+== APP == get user = {Name: Age:1}
 ✅  Exited App successfully
 ```
 

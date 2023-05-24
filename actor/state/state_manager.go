@@ -32,7 +32,8 @@ type stateManagerCtx struct {
 	actorTypeName      string
 	actorID            string
 	stateChangeTracker sync.Map // map[string]*ChangeMetadata
-	stateAsyncProvider *DaprStateAsyncProvider
+	stateAsyncProvider asyncProvider
+	clock              clock
 }
 
 // Deprecated: use NewActorStateManagerContext instead.
@@ -112,18 +113,24 @@ func (s *stateManagerCtx) Get(ctx context.Context, stateName string, reply any) 
 
 	if val, ok := s.stateChangeTracker.Load(stateName); ok {
 		metadata := val.(*ChangeMetadata)
-		if metadata.Kind == Remove {
-			return fmt.Errorf("state is marked for removal: %s", stateName)
-		}
-		replyVal := reflect.ValueOf(reply).Elem()
-		metadataValue := reflect.ValueOf(metadata.Value)
-		if metadataValue.Kind() == reflect.Ptr {
-			replyVal.Set(metadataValue.Elem())
-		} else {
-			replyVal.Set(metadataValue)
-		}
 
-		return nil
+		switch {
+		case metadata.Kind == Remove:
+			return fmt.Errorf("state is marked for removal: %s", stateName)
+
+		case !metadata.estimateTTL.IsZero() && s.clock.Now().After(metadata.estimateTTL):
+			break
+
+		default:
+			replyVal := reflect.ValueOf(reply).Elem()
+			metadataValue := reflect.ValueOf(metadata.Value)
+			if metadataValue.Kind() == reflect.Ptr {
+				replyVal.Set(metadataValue.Elem())
+			} else {
+				replyVal.Set(metadataValue)
+			}
+			return nil
+		}
 	}
 
 	err := s.stateAsyncProvider.LoadContext(ctx, s.actorTypeName, s.actorID, stateName, reply)
@@ -167,13 +174,15 @@ func (s *stateManagerCtx) SetWithTTL(_ context.Context, stateName string, value 
 		if metadata.Kind == None || metadata.Kind == Remove {
 			metadata.Kind = Update
 		}
-		s.stateChangeTracker.Store(stateName, NewChangeMetadata(metadata.Kind, value))
+		s.stateChangeTracker.Store(stateName, NewChangeMetadata(metadata.Kind, value).WithTTL(ttl))
 		return nil
 	}
+
 	s.stateChangeTracker.Store(stateName, (&ChangeMetadata{
 		Kind:  Add,
 		Value: value,
 	}).WithTTL(ttl))
+
 	return nil
 }
 
@@ -210,13 +219,22 @@ func (s *stateManagerCtx) Contains(ctx context.Context, stateName string) (bool,
 	if stateName == "" {
 		return false, errors.New("state name can't be empty")
 	}
+
 	if val, ok := s.stateChangeTracker.Load(stateName); ok {
 		metadata := val.(*ChangeMetadata)
-		if metadata.Kind == Remove {
+		switch {
+		case metadata.Kind == Remove:
 			return false, nil
+
+		case !metadata.estimateTTL.IsZero() && s.clock.Now().After(metadata.estimateTTL):
+			s.stateChangeTracker.Delete(stateName)
+			break
+
+		default:
+			return true, nil
 		}
-		return true, nil
 	}
+
 	return s.stateAsyncProvider.ContainsContext(ctx, s.actorTypeName, s.actorID, stateName)
 }
 
@@ -240,10 +258,13 @@ func (s *stateManagerCtx) Flush(_ context.Context) {
 		stateName := key.(string)
 		metadata := value.(*ChangeMetadata)
 		if metadata.Kind == Remove {
+			return true
+		}
+		if !metadata.estimateTTL.IsZero() && s.clock.Now().After(metadata.estimateTTL) {
 			s.stateChangeTracker.Delete(stateName)
 			return true
 		}
-		metadata = NewChangeMetadata(None, metadata.Value)
+		metadata.Kind = None
 		s.stateChangeTracker.Store(stateName, metadata)
 		return true
 	})
@@ -251,13 +272,7 @@ func (s *stateManagerCtx) Flush(_ context.Context) {
 
 // Deprecated: use NewActorStateManagerContext instead.
 func NewActorStateManager(actorTypeName string, actorID string, provider *DaprStateAsyncProvider) actor.StateManager {
-	return &stateManager{
-		stateManagerCtx: &stateManagerCtx{
-			stateAsyncProvider: provider,
-			actorTypeName:      actorTypeName,
-			actorID:            actorID,
-		},
-	}
+	return &stateManager{NewActorStateManagerContext(actorTypeName, actorID, provider).(*stateManagerCtx)}
 }
 
 func NewActorStateManagerContext(actorTypeName string, actorID string, provider *DaprStateAsyncProvider) actor.StateManagerContext {
@@ -265,5 +280,6 @@ func NewActorStateManagerContext(actorTypeName string, actorID string, provider 
 		stateAsyncProvider: provider,
 		actorTypeName:      actorTypeName,
 		actorID:            actorID,
+		clock:              realClock{},
 	}
 }
